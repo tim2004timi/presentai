@@ -6,6 +6,24 @@ pipeline {
     }
     
     stages {
+        stage('Setup Docker Compose') {
+            steps {
+                script {
+                    sh '''
+                        # Устанавливаем docker-compose если его нет
+                        if ! command -v docker-compose &> /dev/null; then
+                            echo "Installing docker-compose..."
+                            apt-get update
+                            apt-get install -y curl
+                            curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+                            chmod +x /usr/local/bin/docker-compose
+                            ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
+                        fi
+                    '''
+                }
+            }
+        }
+        
         stage('Deploy') {
             steps {
                 script {
@@ -19,20 +37,12 @@ pipeline {
                     
                     dir("${DEPLOY_PATH}") {
                         sh """
-                            if docker compose version &> /dev/null 2>&1; then
-                                DOCKER_COMPOSE_CMD="docker compose"
-                            elif command -v docker-compose &> /dev/null; then
-                                DOCKER_COMPOSE_CMD="docker-compose"
-                            else
-                                echo "Error: docker compose not found"
-                                exit 1
-                            fi
-                            
-                            \$DOCKER_COMPOSE_CMD down || true
-                            \$DOCKER_COMPOSE_CMD build --no-cache
-                            \$DOCKER_COMPOSE_CMD up -d
-                            sleep 5
-                            \$DOCKER_COMPOSE_CMD ps
+                            # Используем docker-compose
+                            docker-compose down || true
+                            docker-compose build --no-cache
+                            docker-compose up -d
+                            sleep 10
+                            docker-compose ps
                         """
                     }
                 }
@@ -49,4 +59,3 @@ pipeline {
         }
     }
 }
-
