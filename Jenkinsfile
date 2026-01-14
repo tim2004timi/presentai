@@ -2,12 +2,20 @@ pipeline {
     agent any
     
     environment {
-        // Jenkins находится на том же сервере, что и приложение
-        // Деплой происходит локально, без SSH
         DEPLOY_PATH = '/opt/presentai'
     }
     
     stages {
+        stage('Checkout') {
+            steps {
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/main']],
+                    extensions: [],
+                    userRemoteConfigs: scm.userRemoteConfigs
+                ])
+            }
+        }
         stage('Tests') {
             steps {
                 dir('backend') {
