@@ -9,7 +9,6 @@ pipeline {
         SECRET_KEY = 'UtNOTJd2e0JzFO0FAmKEiIjQrbGLJSxNiYkgDgVZUMo'
         HOST = '109.172.36.219'
         API_PORT = '8000'
-        OPENAI_API_KEY = credentials('openai-api-key')
     }
     
     stages {
@@ -44,8 +43,9 @@ pipeline {
                     
                     dir("${DEPLOY_PATH}") {
                         sh """
-                            # Создаем .env файл из переменных окружения Jenkins
-                            cat > .env << 'ENVEOF'
+                            # Создаем .env файл если его нет (используем существующий или создаем новый)
+                            if [ ! -f .env ]; then
+                                cat > .env << ENVEOF
 # PostgreSQL
 POSTGRES_DB=${POSTGRES_DB}
 POSTGRES_USER=${POSTGRES_USER}
@@ -62,8 +62,10 @@ HOST=${HOST}
 API_PORT=${API_PORT}
 
 # API
-OPENAI_API_KEY=${OPENAI_API_KEY}
+# OPENAI_API_KEY должен быть установлен вручную на сервере в файле .env
+OPENAI_API_KEY=
 ENVEOF
+                            fi
                             
                             # Используем docker-compose
                             docker-compose down || true
