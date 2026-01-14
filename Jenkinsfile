@@ -3,6 +3,13 @@ pipeline {
     
     environment {
         DEPLOY_PATH = '/opt/presentai'
+        POSTGRES_DB = 'db'
+        POSTGRES_USER = 'trololo'
+        POSTGRES_PASSWORD = 'trololo666'
+        SECRET_KEY = 'UtNOTJd2e0JzFO0FAmKEiIjQrbGLJSxNiYkgDgVZUMo'
+        HOST = '109.172.36.219'
+        API_PORT = '8000'
+        OPENAI_API_KEY = credentials('openai-api-key')
     }
     
     stages {
@@ -37,6 +44,27 @@ pipeline {
                     
                     dir("${DEPLOY_PATH}") {
                         sh """
+                            # Создаем .env файл из переменных окружения Jenkins
+                            cat > .env << 'ENVEOF'
+# PostgreSQL
+POSTGRES_DB=${POSTGRES_DB}
+POSTGRES_USER=${POSTGRES_USER}
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+POSTGRES_PORT=5432
+
+# App
+SECRET_KEY=${SECRET_KEY}
+ACCESS_TOKEN_EXPIRE_MINUTES=100000
+DEBUG=false
+
+# Host
+HOST=${HOST}
+API_PORT=${API_PORT}
+
+# API
+OPENAI_API_KEY=${OPENAI_API_KEY}
+ENVEOF
+                            
                             # Используем docker-compose
                             docker-compose down || true
                             docker-compose build --no-cache
