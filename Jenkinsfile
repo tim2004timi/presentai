@@ -8,7 +8,7 @@ pipeline {
         POSTGRES_PASSWORD = 'trololo666'
         SECRET_KEY = 'UtNOTJd2e0JzFO0FAmKEiIjQrbGLJSxNiYkgDgVZUMo'
         HOST = '109.172.36.219'
-        API_PORT = '8000'
+        API_PORT = '8001'
     }
     
     stages {
@@ -38,7 +38,13 @@ pipeline {
                         cp -r docker-compose.yml ${DEPLOY_PATH}/
                         cp -r backend ${DEPLOY_PATH}/
                         cp -r frontend ${DEPLOY_PATH}/
-                        [ -d monitoring ] && cp -r monitoring ${DEPLOY_PATH}/ || true
+                        if [ -d monitoring ]; then
+                            cp -r monitoring ${DEPLOY_PATH}/
+                            echo "Monitoring directory copied successfully"
+                            ls -la ${DEPLOY_PATH}/monitoring/grafana/dashboards/ || echo "Dashboards directory not found"
+                        else
+                            echo "Warning: monitoring directory not found in workspace"
+                        fi
                     """
                     
                     dir("${DEPLOY_PATH}") {
@@ -67,11 +73,29 @@ OPENAI_API_KEY=
 ENVEOF
                             fi
                             
+                            # Проверяем, что дашборды скопировались
+                            if [ -f monitoring/grafana/dashboards/16110_rev4.json ]; then
+                                echo "Dashboard file found: monitoring/grafana/dashboards/16110_rev4.json"
+                                ls -lh monitoring/grafana/dashboards/
+                            else
+                                echo "Warning: Dashboard file not found!"
+                                find . -name "16110_rev4.json" 2>/dev/null || echo "File not found anywhere"
+                            fi
+                            
                             # Используем docker-compose
                             docker-compose down || true
                             docker-compose build --no-cache
                             docker-compose up -d
-                            sleep 10
+                            sleep 15
+                            
+                            # Проверяем, что дашборды доступны в контейнере Grafana
+                            echo "Checking dashboards in Grafana container:"
+                            docker exec grafana-presentai ls -la /var/lib/grafana/dashboards/ || echo "Cannot access Grafana container"
+                            
+                            # Перезапускаем Grafana чтобы она перечитала дашборды
+                            docker-compose restart grafana
+                            sleep 5
+                            
                             docker-compose ps
                         """
                     }
