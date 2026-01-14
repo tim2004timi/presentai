@@ -19,11 +19,20 @@ pipeline {
                     
                     dir("${DEPLOY_PATH}") {
                         sh """
-                            docker-compose down || true
-                            docker-compose build --no-cache
-                            docker-compose up -d
+                            if command -v docker-compose &> /dev/null; then
+                                DOCKER_COMPOSE_CMD="docker-compose"
+                            elif docker compose version &> /dev/null; then
+                                DOCKER_COMPOSE_CMD="docker compose"
+                            else
+                                echo "Error: docker-compose not found"
+                                exit 1
+                            fi
+                            
+                            \$DOCKER_COMPOSE_CMD down || true
+                            \$DOCKER_COMPOSE_CMD build --no-cache
+                            \$DOCKER_COMPOSE_CMD up -d
                             sleep 5
-                            docker-compose ps
+                            \$DOCKER_COMPOSE_CMD ps
                         """
                     }
                 }
