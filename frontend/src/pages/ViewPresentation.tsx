@@ -1,34 +1,85 @@
+import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button.tsx";
 import {
   ArrowLeft,
   Download,
   FileText,
   Presentation,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
-
-// Mock data for presentations
-const mockPresentations: Record<string, { name: string; slides: number }> = {
-  "1": { name: "Квартальный отчёт Q4 2024", slides: 12 },
-  "2": { name: "Маркетинговая стратегия 2025", slides: 8 },
-  "3": { name: "Презентация продукта", slides: 15 },
-  "4": { name: "Обучение новых сотрудников", slides: 20 },
-};
+import { presentationsApi } from "@/lib/api.ts";
 
 const ViewPresentation = () => {
   const navigate = useNavigate();
   const { id } = useParams();
+  const presentationId = id ? parseInt(id, 10) : null;
 
-  const presentation = id ? mockPresentations[id] : null;
-  const title = presentation?.name || "Презентация";
+  const { data: presentation, isLoading } = useQuery({
+    queryKey: ["presentation", presentationId],
+    queryFn: () => presentationsApi.getById(presentationId!),
+    enabled: !!presentationId,
+  });
 
-  // Mock PDF preview image
-  const pdfUrl = "https://www.w3.org/WAI/WCAG21/Techniques/pdf/img/table-word.jpg";
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
-  const handleDownload = (format: "pptx" | "pdf") => {
-    toast.success(`Скачивание ${format.toUpperCase()} файла...`);
+  useEffect(() => {
+    return () => {
+      if (pdfUrl) {
+        window.URL.revokeObjectURL(pdfUrl);
+      }
+    };
+  }, [pdfUrl]);
+
+  useQuery({
+    queryKey: ["presentation-pdf", presentation?.filename],
+    queryFn: async () => {
+      if (!presentation?.filename) return null;
+      const baseFilename = presentation.filename.replace(/\.(pptx|pdf)$/, "");
+      const filename = `${baseFilename}.pdf`;
+      
+      try {
+        const blob = await presentationsApi.getFile(filename);
+        const url = window.URL.createObjectURL(blob);
+        setPdfUrl(url);
+        return url;
+      } catch (error) {
+        console.error("Failed to load PDF:", error);
+        return null;
+      }
+    },
+    enabled: !!presentation?.filename,
+  });
+
+  const handleDownload = async (format: "pptx" | "pdf") => {
+    if (!presentation?.filename) {
+      toast.error("Файл презентации не найден");
+      return;
+    }
+
+    try {
+      const baseFilename = presentation.filename.replace(/\.(pptx|pdf)$/, "");
+      await presentationsApi.downloadFile(baseFilename, format);
+      toast.success(`Файл ${format.toUpperCase()} скачан успешно`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Ошибка при скачивании файла";
+      toast.error(message);
+      console.error(error);
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="glass-card p-12 text-center max-w-md">
+          <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Загрузка презентации...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!presentation) {
     return (
@@ -48,9 +99,10 @@ const ViewPresentation = () => {
     );
   }
 
+  const title = presentation.title || "Презентация";
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <Button
@@ -69,13 +121,12 @@ const ViewPresentation = () => {
             <span className="font-semibold hidden sm:block">Просмотр презентации</span>
           </div>
 
-          <div className="w-20" /> {/* Spacer for alignment */}
+          <div className="w-20" />
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="animate-fade-in space-y-6">
-          {/* Title and Download Buttons */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
             <div>
               <h1 className="text-3xl font-bold mb-2">{title}</h1>
@@ -103,18 +154,25 @@ const ViewPresentation = () => {
             </div>
           </div>
 
-          {/* PDF Preview */}
           <div className="glass-card p-4 sm:p-6">
-            <div className="aspect-[4/3] bg-secondary/30 rounded-lg overflow-hidden flex items-center justify-center">
-              <img
-                src={pdfUrl}
-                alt="Превью презентации"
-                className="max-w-full max-h-full object-contain"
-              />
+            <div className="aspect-[4/3] bg-secondary/30 rounded-lg overflow-hidden">
+              {pdfUrl ? (
+                <iframe
+                  src={pdfUrl}
+                  className="w-full h-full border-0"
+                  title="PDF Preview"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className="text-center p-8">
+                    <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
+                    <p className="text-muted-foreground">Загрузка презентации...</p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Navigation */}
           <Button
             variant="outline"
             onClick={() => navigate("/dashboard")}

@@ -25,10 +25,8 @@ async def download_presentation_file(
     db: AsyncSession = Depends(get_db),
 ):
     """Загрузить файл презентации (PPTX или PDF)"""
-    # Извлекаем UUID без расширения
     file_stem = Path(filename).stem
     
-    # Проверяем, что презентация существует и принадлежит пользователю
     presentation = await presentation_crud.get_presentation_by_filename(
         db, file_stem
     )
@@ -38,14 +36,12 @@ async def download_presentation_file(
             detail="Presentation not found",
         )
     
-    # Проверяем права доступа
     if presentation.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied",
         )
     
-    # Проверяем расширение файла
     file_extension = Path(filename).suffix.lower()
     if file_extension not in [".pptx", ".pdf"]:
         raise HTTPException(
@@ -53,7 +49,6 @@ async def download_presentation_file(
             detail="Invalid file extension. Only .pptx and .pdf are allowed",
         )
     
-    # Формируем путь к файлу
     file_path = STATIC_DIR / filename
     
     if not file_path.exists():
@@ -62,7 +57,6 @@ async def download_presentation_file(
             detail="File not found",
         )
     
-    # Определяем media type
     media_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation" if file_extension == ".pptx" else "application/pdf"
     
     return FileResponse(

@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button.tsx";
 import { Input } from "@/components/ui/input.tsx";
@@ -9,7 +9,6 @@ import {
   ArrowRight,
   Upload,
   X,
-  GripVertical,
   ChevronUp,
   ChevronDown,
   Plus,
@@ -21,6 +20,8 @@ import {
   Presentation,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
+import { inputFormsApi, cardListsApi, presentationsApi, Card } from "@/lib/api.ts";
 
 interface Slide {
   id: string;
@@ -33,6 +34,8 @@ interface UploadedFile {
   id: string;
   name: string;
   size: number;
+  filename?: string; // Server filename after upload
+  file?: File; // Original file object
 }
 
 const CreatePresentation = () => {
@@ -40,21 +43,19 @@ const CreatePresentation = () => {
   const { id } = useParams();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Step management
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Step 1 state
-  const [title, setTitle] = useState(id ? "Квартальный отчёт Q4 2024" : "");
+  const [title, setTitle] = useState("");
   const [slideCount, setSlideCount] = useState(8);
   const [description, setDescription] = useState("");
   const [files, setFiles] = useState<UploadedFile[]>([]);
 
-  // Step 2 state
   const [slides, setSlides] = useState<Slide[]>([]);
-
-  // Step 3 state - mock PDF
-  const pdfUrl = "https://www.w3.org/WAI/WCAG21/Techniques/pdf/img/table-word.jpg";
+  const [inputFormId, setInputFormId] = useState<number | null>(null);
+  const [cardListId, setCardListId] = useState<number | null>(null);
+  const [presentationId, setPresentationId] = useState<number | null>(null);
+  const [presentationFilename, setPresentationFilename] = useState<string | null>(null);
 
   const steps = [
     { number: 1, label: "Ввод данных" },
@@ -62,18 +63,37 @@ const CreatePresentation = () => {
     { number: 3, label: "Просмотр" },
   ];
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const uploadedFiles = e.target.files;
     if (!uploadedFiles) return;
 
-    const newFiles: UploadedFile[] = Array.from(uploadedFiles).map((file) => ({
-      id: Math.random().toString(36).substr(2, 9),
-      name: file.name,
-      size: file.size,
-    }));
+    const filesToUpload = Array.from(uploadedFiles);
+    setIsLoading(true);
 
-    setFiles((prev) => [...prev, ...newFiles]);
-    toast.success(`Загружено ${newFiles.length} файл(ов)`);
+    try {
+      const uploadPromises = filesToUpload.map(async (file) => {
+        const response = await inputFormsApi.uploadFile(file);
+        return {
+          id: Math.random().toString(36).substr(2, 9),
+          name: file.name,
+          size: file.size,
+          filename: response.filename,
+          file: file,
+        };
+      });
+
+      const uploadedFilesData = await Promise.all(uploadPromises);
+      setFiles((prev) => [...prev, ...uploadedFilesData]);
+      toast.success(`Загружено ${uploadedFilesData.length} файл(ов)`);
+    } catch (error) {
+      toast.error("Ошибка при загрузке файлов");
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
   };
 
   const removeFile = (id: string) => {
@@ -92,40 +112,85 @@ const CreatePresentation = () => {
       return;
     }
 
+    if (slideCount <= 0) {
+      toast.error("Количество слайдов должно быть больше 0");
+      return;
+    }
+
     setIsLoading(true);
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    try {
+      const fileFilenames = files.map((f) => f.filename || "").filter(Boolean);
 
-    // Generate mock slides
-    const mockSlides: Slide[] = Array.from({ length: slideCount }, (_, i) => ({
-      id: Math.random().toString(36).substr(2, 9),
-      order: i + 1,
-      title: `Слайд ${i + 1}: ${
-        i === 0
-          ? "Введение"
-          : i === slideCount - 1
-          ? "Заключение"
-          : `Раздел ${i}`
-      }`,
-      content:
-        i === 0
-          ? "Краткое описание содержания презентации и основных тем."
-          : i === slideCount - 1
-          ? "Подведение итогов и ключевые выводы презентации."
-          : `Основной контент для слайда ${i + 1}. Здесь будет размещена информация по теме раздела.`,
-    }));
+      const response = await inputFormsApi.create({
+        title,
+        text: description,
+        slides: slideCount,
+        files: fileFilenames,
+      });
 
-    setSlides(mockSlides);
-    setIsLoading(false);
-    setCurrentStep(2);
+      setInputFormId(response.form.id);
+
+      const generatedSlides: Slide[] = response.generated_slides.cards.map((card) => ({
+        id: Math.random().toString(36).substr(2, 9),
+        order: card.index,
+        title: card.title,
+        content: card.text,
+      }));
+
+      setSlides(generatedSlides);
+      setCurrentStep(2);
+      toast.success("Слайды сгенерированы успешно");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Ошибка при создании формы";
+      toast.error(message);
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleStep2Next = async () => {
+    if (!inputFormId) {
+      toast.error("Ошибка: форма не создана");
+      return;
+    }
+
+    if (slides.length === 0) {
+      toast.error("Добавьте хотя бы один слайд");
+      return;
+    }
+
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setIsLoading(false);
-    setCurrentStep(3);
+
+    try {
+      const cards: Card[] = slides.map((slide) => ({
+        index: slide.order,
+        title: slide.title,
+        text: slide.content,
+      }));
+
+      const cardListResponse = await cardListsApi.create({
+        inputform_id: inputFormId,
+        title: title,
+        cards: cards,
+      });
+
+      setCardListId(cardListResponse.id);
+      if (cardListResponse.presentation) {
+        setPresentationId(cardListResponse.presentation.id);
+        setPresentationFilename(cardListResponse.presentation.filename);
+      }
+
+      setCurrentStep(3);
+      toast.success("Презентация создана успешно!");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Ошибка при создании презентации";
+      toast.error(message);
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const moveSlide = (index: number, direction: "up" | "down") => {
@@ -139,7 +204,6 @@ const CreatePresentation = () => {
       newSlides[index],
     ];
 
-    // Update order numbers
     newSlides.forEach((slide, i) => {
       slide.order = i + 1;
     });
@@ -172,8 +236,51 @@ const CreatePresentation = () => {
     );
   };
 
-  const handleDownload = (format: "pptx" | "pdf") => {
-    toast.success(`Скачивание ${format.toUpperCase()} файла...`);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  
+  useEffect(() => {
+    return () => {
+      if (pdfUrl) {
+        window.URL.revokeObjectURL(pdfUrl);
+      }
+    };
+  }, [pdfUrl]);
+  
+  useQuery({
+    queryKey: ["presentation-pdf", presentationFilename],
+    queryFn: async () => {
+      if (!presentationFilename) return null;
+      const baseFilename = presentationFilename.replace(/\.(pptx|pdf)$/, "");
+      const filename = `${baseFilename}.pdf`;
+      
+      try {
+        const blob = await presentationsApi.getFile(filename);
+        const url = window.URL.createObjectURL(blob);
+        setPdfUrl(url);
+        return url;
+      } catch (error) {
+        console.error("Failed to load PDF:", error);
+        return null;
+      }
+    },
+    enabled: !!presentationFilename && currentStep === 3,
+  });
+
+  const handleDownload = async (format: "pptx" | "pdf") => {
+    if (!presentationFilename) {
+      toast.error("Файл презентации не найден");
+      return;
+    }
+
+    try {
+      const baseFilename = presentationFilename.replace(/\.(pptx|pdf)$/, "");
+      await presentationsApi.downloadFile(baseFilename, format);
+      toast.success(`Файл ${format.toUpperCase()} скачан успешно`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Ошибка при скачивании файла";
+      toast.error(message);
+      console.error(error);
+    }
   };
 
   return (
@@ -190,7 +297,6 @@ const CreatePresentation = () => {
             <span className="hidden sm:inline">Назад</span>
           </Button>
 
-          {/* Step Indicator */}
           <div className="flex items-center gap-2 sm:gap-4">
             {steps.map((step, index) => (
               <div key={step.number} className="flex items-center">
@@ -231,12 +337,11 @@ const CreatePresentation = () => {
             ))}
           </div>
 
-          <div className="w-20" /> {/* Spacer for alignment */}
+          <div className="w-20" />
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8 max-w-4xl">
-        {/* Step 1: Input */}
         {currentStep === 1 && (
           <div className="animate-fade-in space-y-8">
             <div className="text-center mb-8">
@@ -247,7 +352,6 @@ const CreatePresentation = () => {
             </div>
 
             <div className="glass-card p-6 sm:p-8 space-y-6">
-              {/* Title */}
               <div className="space-y-2">
                 <Label htmlFor="title">Название презентации *</Label>
                 <Input
@@ -258,7 +362,6 @@ const CreatePresentation = () => {
                 />
               </div>
 
-              {/* Slide Count */}
               <div className="space-y-2">
                 <Label htmlFor="slideCount">Количество слайдов</Label>
                 <Input
@@ -272,7 +375,6 @@ const CreatePresentation = () => {
                 />
               </div>
 
-              {/* Description */}
               <div className="space-y-2">
                 <Label htmlFor="description">Описание содержания</Label>
                 <Textarea
@@ -284,7 +386,6 @@ const CreatePresentation = () => {
                 />
               </div>
 
-              {/* File Upload */}
               <div className="space-y-4">
                 <Label>Загрузка файлов (опционально)</Label>
                 <input
@@ -299,6 +400,7 @@ const CreatePresentation = () => {
                   variant="outline"
                   onClick={() => fileInputRef.current?.click()}
                   className="w-full h-24 border-dashed gap-2"
+                  disabled={isLoading}
                 >
                   <Upload className="w-5 h-5" />
                   <span>Нажмите для загрузки файлов</span>
@@ -334,7 +436,6 @@ const CreatePresentation = () => {
                 )}
               </div>
 
-              {/* Next Button */}
               <Button
                 onClick={handleStep1Next}
                 disabled={isLoading}
@@ -357,7 +458,6 @@ const CreatePresentation = () => {
           </div>
         )}
 
-        {/* Step 2: Edit Slides */}
         {currentStep === 2 && (
           <div className="animate-fade-in space-y-6">
             <div className="text-center mb-8">
@@ -383,7 +483,6 @@ const CreatePresentation = () => {
                       style={{ animationDelay: `${index * 50}ms` }}
                     >
                       <div className="flex items-start gap-4">
-                        {/* Order & Controls */}
                         <div className="flex flex-col items-center gap-1 pt-2">
                           <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center text-sm font-semibold text-primary">
                             {slide.order}
@@ -410,7 +509,6 @@ const CreatePresentation = () => {
                           </div>
                         </div>
 
-                        {/* Content */}
                         <div className="flex-1 space-y-3">
                           <Input
                             value={slide.title}
@@ -430,7 +528,6 @@ const CreatePresentation = () => {
                           />
                         </div>
 
-                        {/* Delete */}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -445,7 +542,6 @@ const CreatePresentation = () => {
                   ))}
                 </div>
 
-                {/* Add Slide Button */}
                 <Button
                   variant="outline"
                   onClick={addSlide}
@@ -455,7 +551,6 @@ const CreatePresentation = () => {
                   Добавить слайд
                 </Button>
 
-                {/* Next Button */}
                 <Button
                   onClick={handleStep2Next}
                   disabled={isLoading}
@@ -479,7 +574,6 @@ const CreatePresentation = () => {
           </div>
         )}
 
-        {/* Step 3: Preview & Download */}
         {currentStep === 3 && (
           <div className="animate-fade-in space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
@@ -508,35 +602,36 @@ const CreatePresentation = () => {
               </div>
             </div>
 
-            {/* PDF Preview Placeholder */}
             <div className="glass-card overflow-hidden">
-              <div className="aspect-[4/3] bg-secondary/30 flex items-center justify-center relative">
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-8">
-                  <div className="w-20 h-20 rounded-2xl bg-primary/20 flex items-center justify-center">
-                    <Presentation className="w-10 h-10 text-primary" />
+              <div className="aspect-[4/3] bg-secondary/30">
+                {pdfUrl ? (
+                  <iframe
+                    src={pdfUrl}
+                    className="w-full h-full border-0"
+                    title="PDF Preview"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <div className="text-center p-8">
+                      {presentationFilename ? (
+                        <>
+                          <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
+                          <p className="text-muted-foreground">Загрузка презентации...</p>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-20 h-20 rounded-2xl bg-primary/20 flex items-center justify-center mx-auto mb-4">
+                            <Presentation className="w-10 h-10 text-primary" />
+                          </div>
+                          <h3 className="text-xl font-semibold mb-2">Предварительный просмотр</h3>
+                          <p className="text-muted-foreground max-w-md">
+                            Здесь будет отображаться сгенерированная презентация в формате PDF
+                          </p>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-center">
-                    <h3 className="text-xl font-semibold mb-2">Предварительный просмотр</h3>
-                    <p className="text-muted-foreground max-w-md">
-                      Здесь будет отображаться сгенерированная презентация в формате PDF
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2 mt-4">
-                    {slides.slice(0, 6).map((slide) => (
-                      <div
-                        key={slide.id}
-                        className="w-24 h-16 bg-card border border-border rounded-lg flex items-center justify-center text-xs font-medium text-muted-foreground"
-                      >
-                        {slide.order}
-                      </div>
-                    ))}
-                    {slides.length > 6 && (
-                      <div className="w-24 h-16 bg-card border border-border rounded-lg flex items-center justify-center text-xs font-medium text-muted-foreground">
-                        +{slides.length - 6}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                )}
               </div>
             </div>
 

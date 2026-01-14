@@ -1,45 +1,52 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { Label } from "@/components/ui/label.tsx";
 import { Presentation, Sparkles } from "lucide-react";
-import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext.tsx";
 
 const Login = () => {
   const navigate = useNavigate();
-  const [login, setLogin] = useState("");
+  const { login, isAuthenticated, isLoading } = useAuth();
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isAuthenticated, isLoading, navigate]);
+  
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!login || !password) {
-      toast.error("Пожалуйста, заполните все поля");
+    if (!username || !password) {
       return;
     }
 
-    setIsLoading(true);
+    setIsSubmitting(true);
     
-    // Simulate login
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    toast.success("Вход выполнен успешно");
-    navigate("/dashboard");
-    setIsLoading(false);
+    try {
+      await login(username, password);
+      navigate("/dashboard");
+    } catch (error) {
+      // Error is handled in AuthContext
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      {/* Background glow effects */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-[120px]" />
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/10 rounded-full blur-[120px]" />
       </div>
 
       <div className="w-full max-w-md animate-fade-in">
-        {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center">
@@ -56,7 +63,6 @@ const Login = () => {
           </div>
         </div>
 
-        {/* Login Card */}
         <div className="glass-card p-8">
           <h2 className="text-2xl font-semibold text-center mb-6">Вход в систему</h2>
           
@@ -67,8 +73,8 @@ const Login = () => {
                 id="login"
                 type="text"
                 placeholder="Введите логин"
-                value={login}
-                onChange={(e) => setLogin(e.target.value)}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
               />
             </div>
@@ -89,9 +95,9 @@ const Login = () => {
               type="submit"
               className="w-full"
               size="lg"
-              disabled={isLoading}
+              disabled={isSubmitting}
             >
-              {isLoading ? "Вход..." : "Войти"}
+              {isSubmitting ? "Вход..." : "Войти"}
             </Button>
           </form>
 

@@ -29,7 +29,6 @@ async def create_card_list(
     db: AsyncSession = Depends(get_db),
 ):
     """Создать новый список карточек и презентацию"""
-    # Проверяем, что форма существует и принадлежит пользователю
     input_form = await inputform_crud.get_input_form_by_id(
         db, card_list_create.inputform_id, user_id=current_user.id
     )
@@ -39,22 +38,17 @@ async def create_card_list(
             detail="Input form not found or access denied",
         )
     
-    # Создаем список карточек
     card_list = await cards_crud.create_card_list(db, card_list_create)
     
-    # Создаем презентацию из карточек
     slide_cards = [
         SlideCard(index=card.index, title=card.title, text=card.text)
         for card in card_list.cards
     ]
     
-    # Генерируем PPTX (возвращает filename с расширением .pptx)
     filename_with_ext = generate_pptx(card_list_create.title, slide_cards)
     
-    # Извлекаем UUID без расширения
     filename = Path(filename_with_ext).stem
     
-    # Создаем запись о презентации в БД
     presentation_create = PresentationCreate(
         filename=filename,
         title=card_list_create.title,
@@ -64,7 +58,6 @@ async def create_card_list(
         db, presentation_create, current_user.id
     )
     
-    # Возвращаем CardList с Presentation
     return CardListWithPresentation(
         id=card_list.id,
         inputform_id=card_list.inputform_id,
@@ -92,7 +85,6 @@ async def get_card_list(
             detail="Card list not found",
         )
     
-    # Проверяем, что форма принадлежит пользователю
     input_form = await inputform_crud.get_input_form_by_id(
         db, card_list.inputform_id, user_id=current_user.id
     )
@@ -116,7 +108,6 @@ async def get_card_lists_by_inputform(
     db: AsyncSession = Depends(get_db),
 ):
     """Получить все списки карточек для формы"""
-    # Проверяем, что форма существует и принадлежит пользователю
     input_form = await inputform_crud.get_input_form_by_id(
         db, inputform_id, user_id=current_user.id
     )

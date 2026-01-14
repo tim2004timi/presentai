@@ -8,20 +8,17 @@ from src.models.base import Base
 from src.models.user import User
 from src.models.inputform import InputForm  # Импорт для создания таблицы
 from src.models.cards import CardList, Card  # Импорт для создания таблиц
-from src.models.presentation import Presentation  # Импорт для создания таблицы
+from src.models.presentation import Presentation
 
-# Асинхронный URL для подключения к PostgreSQL
 SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
 
-# Создаем асинхронный engine
 engine = create_async_engine(
     SQLALCHEMY_DATABASE_URL,
-    echo=False,  # Логирование SQL запросов (отключите в production)
-    poolclass=NullPool,  # Для избежания проблем с пулом соединений
-    future=True,  # Для поддержки SQLAlchemy 2.0
+    echo=False,
+    poolclass=NullPool,
+    future=True,
 )
 
-# Создаем асинхронную сессию
 AsyncSessionLocal = sessionmaker(
     bind=engine,
     class_=AsyncSession,
@@ -29,14 +26,7 @@ AsyncSessionLocal = sessionmaker(
     expire_on_commit=False,
 )
 
-# Dependency для получения асинхронной сессии
 async def get_db() -> AsyncSession:
-    """
-    Асинхронная dependency для получения сессии БД.
-    Использование:
-        async with get_db() as db:
-            # работа с БД
-    """
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -47,33 +37,18 @@ async def get_db() -> AsyncSession:
         finally:
             await session.close()
 
-# Функция для создания таблиц
 async def create_tables():
-    """
-    Создает все таблицы в базе данных.
-    Вызывается при старте приложения.
-    """
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-# Функция для удаления таблиц (для тестов)
 async def drop_tables():
-    """
-    Удаляет все таблицы из базы данных.
-    Используется для тестов.
-    """
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
-# Функция для проверки подключения к БД
 async def check_db_connection():
-    """
-    Проверяет подключение к базе данных.
-    Возвращает True если подключение успешно.
-    """
     try:
         async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))  # ← Оберните в text()
+            await conn.execute(text("SELECT 1"))
         return True
     except Exception as e:
         print(f"Database connection error: {e}")

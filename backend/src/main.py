@@ -2,6 +2,8 @@ import asyncio
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Counter, Info
 
 from src.auth import router as auth_router
 from src.config import settings
@@ -10,6 +12,9 @@ from src.routers.user import router as user_router
 from src.routers.inputform import router as inputform_router
 from src.routers.cards import router as cards_router
 from src.routers.presentation import router as presentation_router
+
+app_info = Info('fastapi_app_info', 'FastAPI application information')
+app_info.info({'app_name': 'presentai-backend', 'version': '1.0.0'})
 
 app = FastAPI(
     title="PresentAI API",
@@ -26,6 +31,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+instrumentator = Instrumentator(
+    should_group_status_codes=False,
+    should_ignore_untemplated=True,
+    should_instrument_requests_inprogress=True,
+    excluded_handlers=["/metrics"],
+    inprogress_name="fastapi_requests_in_progress",
+    inprogress_labels=True,
+)
+instrumentator.instrument(app).expose(app)
 
 @app.on_event("startup")
 async def startup_event():

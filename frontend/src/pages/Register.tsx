@@ -1,17 +1,26 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { Label } from "@/components/ui/label.tsx";
 import { Presentation, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext.tsx";
 
 const Register = () => {
   const navigate = useNavigate();
+  const { register, isAuthenticated, isLoading } = useAuth();
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isAuthenticated, isLoading, navigate]);
+  
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,26 +40,25 @@ const Register = () => {
       return;
     }
 
-    setIsLoading(true);
+    setIsSubmitting(true);
 
-    // Simulate registration
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    toast.success("Регистрация успешна!");
-    navigate("/dashboard");
-    setIsLoading(false);
+    try {
+      await register(login, password);
+      navigate("/dashboard");
+    } catch (error) {
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      {/* Background glow effects */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-primary/10 rounded-full blur-[120px]" />
         <div className="absolute bottom-1/4 left-1/4 w-96 h-96 bg-accent/10 rounded-full blur-[120px]" />
       </div>
 
       <div className="w-full max-w-md animate-fade-in">
-        {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center">
@@ -67,7 +75,6 @@ const Register = () => {
           </div>
         </div>
 
-        {/* Register Card */}
         <div className="glass-card p-8">
           <h2 className="text-2xl font-semibold text-center mb-6">Регистрация</h2>
 
@@ -112,9 +119,9 @@ const Register = () => {
               type="submit"
               className="w-full"
               size="lg"
-              disabled={isLoading}
+              disabled={isSubmitting}
             >
-              {isLoading ? "Регистрация..." : "Зарегистрироваться"}
+              {isSubmitting ? "Регистрация..." : "Зарегистрироваться"}
             </Button>
           </form>
 
