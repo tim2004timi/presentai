@@ -6,16 +6,6 @@ pipeline {
     }
     
     stages {
-        stage('Checkout') {
-            steps {
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: '*/main']],
-                    extensions: [],
-                    userRemoteConfigs: scm.userRemoteConfigs
-                ])
-            }
-        }
         stage('Tests') {
             steps {
                 dir('backend') {
