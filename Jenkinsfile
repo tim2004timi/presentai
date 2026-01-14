@@ -19,12 +19,12 @@ pipeline {
                     
                     dir("${DEPLOY_PATH}") {
                         sh """
-                            if command -v docker-compose &> /dev/null; then
-                                DOCKER_COMPOSE_CMD="docker-compose"
-                            elif docker compose version &> /dev/null; then
+                            if docker compose version &> /dev/null 2>&1; then
                                 DOCKER_COMPOSE_CMD="docker compose"
+                            elif command -v docker-compose &> /dev/null; then
+                                DOCKER_COMPOSE_CMD="docker-compose"
                             else
-                                echo "Error: docker-compose not found"
+                                echo "Error: docker compose not found"
                                 exit 1
                             fi
                             
